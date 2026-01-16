@@ -1,0 +1,47 @@
+# Remote Systems Configuration for opencode-sshfs
+# ================================================
+#
+# Format: REMOTE_NAME|SSH_USER|SSH_HOST|REMOTE_PATH|LOCAL_MOUNT
+#
+# Field Descriptions:
+#   REMOTE_NAME : Short identifier (alphanumeric, underscore, dash only)
+#   SSH_USER    : Your username on the remote system
+#   SSH_HOST    : Hostname or IP address (can match an SSH config Host entry)
+#   REMOTE_PATH : Absolute path on remote (use $USER for your username if needed)
+#   LOCAL_MOUNT : Local mount point (~ expands to your home directory)
+#
+# Notes:
+#   - Lines starting with # are comments
+#   - Each remote should be on its own line
+#   - Do not use spaces around the | delimiter
+#   - The LOCAL_MOUNT directory will be created automatically if it doesn't exist
+#
+# ============================================================================
+# EXAMPLES - Uncomment and modify as needed
+# ============================================================================
+
+# HPC Clusters
+# ------------
+# curc|jdoe|login.rc.colorado.edu|/projects/jdoe/work|~/mounts/curc
+# ncar_casper|jdoe|casper.hpc.ucar.edu|/glade/work/jdoe|~/mounts/casper
+# ncar_derecho|jdoe|derecho.hpc.ucar.edu|/glade/derecho/scratch/jdoe|~/mounts/derecho
+
+# University/Lab Servers
+# ----------------------
+# lab_server|researcher|lab.university.edu|/data/$USER/experiments|~/mounts/lab
+# dept_compute|jdoe|compute.dept.edu|/home/$USER/projects|~/mounts/dept
+
+# Cloud/VPS
+# ---------
+# aws_dev|ubuntu|ec2-xx-xx-xx-xx.compute.amazonaws.com|/home/ubuntu/app|~/mounts/aws
+# digitalocean|root|123.45.67.89|/var/www|~/mounts/do
+
+# Personal/Home
+# -------------
+# home_server|pi|192.168.1.100|/home/pi/projects|~/mounts/homeserver
+# nas|admin|nas.local|/volume1/projects|~/mounts/nas
+
+# ============================================================================
+# YOUR REMOTES - Add your configurations below
+# ============================================================================
+
