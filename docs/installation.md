@@ -27,15 +27,16 @@ brew install --cask macfuse
 ```
 
 **Important Notes:**
-- You may need to restart your computer after installation
-- On first use, you may need to allow the kernel extension in **System Settings > Privacy & Security**
-- If prompted, click "Allow" for the macFUSE system extension
+- After installation, allow the kernel extension in **System Settings > Privacy & Security**
+- Click "Allow" for the macFUSE system extension when prompted
 
 ### 3. SSHFS
 
 ```bash
 brew install sshfs
 ```
+
+**Important:** Restart your computer after installing sshfs before first use.
 
 Verify installation:
 

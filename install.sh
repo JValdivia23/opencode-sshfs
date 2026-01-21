@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
 # install.sh - Installation helper for opencode-sshfs
-# Version: 0.1.0
+# Version: 0.1.1
 # ============================================================================
 
 set -e
@@ -125,17 +125,21 @@ check_macfuse() {
         print_info "macFUSE is required for sshfs. Install it with:"
         print_cmd "brew install --cask macfuse"
         echo ""
-        print_info "${YELLOW}Note:${NC} You may need to restart your computer after installation."
-        print_info "${YELLOW}Note:${NC} You may need to allow the kernel extension in System Settings > Privacy & Security."
+        print_info "${YELLOW}Note:${NC} After installation, allow the kernel extension in System Settings > Privacy & Security."
         echo ""
         
         if ask_yes_no "Would you like to install macFUSE now?"; then
             echo ""
             brew install --cask macfuse
             echo ""
-            print_warn "Please restart your computer before continuing."
-            print_warn "Then run this installer again."
-            exit 0
+            print_warn "Go to System Settings > Privacy & Security and allow the macFUSE extension."
+            print_info "Once approved, continue with this installer."
+            echo ""
+            if ! ask_yes_no "Have you approved macFUSE in System Settings?" "n"; then
+                print_info "Please approve macFUSE and run this installer again."
+                exit 0
+            fi
+            return 0
         fi
         
         return 1
@@ -154,6 +158,8 @@ check_sshfs() {
         print_info "Install sshfs with:"
         print_cmd "brew install sshfs"
         echo ""
+        print_info "${YELLOW}Note:${NC} A system restart is required after sshfs installation."
+        echo ""
         
         if ask_yes_no "Would you like to install sshfs now?"; then
             echo ""
@@ -161,7 +167,9 @@ check_sshfs() {
             echo ""
             if command -v sshfs &> /dev/null; then
                 print_ok "sshfs installed successfully"
-                return 0
+                print_warn "Please restart your computer before using sshfs."
+                print_warn "Then run this installer again to complete setup."
+                exit 0
             else
                 print_error "sshfs installation may have failed"
                 return 1

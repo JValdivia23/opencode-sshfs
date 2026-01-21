@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================================================
 # remote-tools.sh - SSHFS mount utilities for remote development with OpenCode
-# Version: 0.1.0
+# Version: 0.1.1
 # https://github.com/JValdivia23/opencode-sshfs
 # ============================================================================
 
 # Configuration
-REMOTE_TOOLS_VERSION="0.1.0"
+REMOTE_TOOLS_VERSION="0.1.1"
 # Get the directory containing this script
 # Try BASH_SOURCE first, then fall back to $0 for zsh compatibility
 _rt_script_path="${BASH_SOURCE[0]:-$0}"
@@ -140,9 +140,10 @@ _rt_check_sshfs() {
         _rt_error "sshfs is not installed."
         echo ""
         echo "Install it with:"
-        echo "  brew install macfuse sshfs"
+        echo "  brew install --cask macfuse"
+        echo "  brew install sshfs"
         echo ""
-        echo "Note: You may need to restart your computer after installing macFUSE."
+        echo "Note: Restart your computer after installing sshfs."
         return 1
     fi
     return 0

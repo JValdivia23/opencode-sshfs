@@ -24,7 +24,7 @@ When you can't install OpenCode on a remote system (e.g., university supercomput
 - [Homebrew](https://brew.sh)
 - [macFUSE](https://osxfuse.github.io/) and sshfs
 
-> **Important:** After installing macFUSE, you may need to allow the kernel extension in **System Settings → Privacy & Security**, then **restart your Mac**.
+> **Important:** After installing macFUSE, allow the kernel extension in **System Settings → Privacy & Security**. Restart your Mac after installing sshfs.
 
 ## Quick Start
 
@@ -32,8 +32,9 @@ When you can't install OpenCode on a remote system (e.g., university supercomput
 
 ```bash
 brew install --cask macfuse
+# Allow in System Settings > Privacy & Security when prompted
 brew install sshfs
-# Restart your Mac if prompted
+# Restart your Mac after sshfs installation
 ```
 
 ### 2. Clone the repository
