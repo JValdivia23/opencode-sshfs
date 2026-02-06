@@ -320,6 +320,16 @@ mount-remote() {
         echo ""
         _rt_error "Failed to mount $remote_name"
         echo ""
+        
+        # Check if it's an authentication issue
+        if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "${user}@${host}" "echo test" &>/dev/null; then
+            echo "${_RT_YELLOW}Authentication may be required.${_RT_NC}"
+            echo ""
+            echo "If this server requires password + 2FA, run:"
+            echo "  ${_RT_BOLD}remote-setup-controlmaster $remote_name${_RT_NC}"
+            echo ""
+        fi
+        
         echo "Troubleshooting steps:"
         echo "  1. Check your network connection"
         echo "  2. Verify credentials: ssh ${user}@${host}"
@@ -527,6 +537,10 @@ remote-health() {
         _rt_success "SSH authentication successful (key-based)"
     else
         _rt_warn "Key-based auth not available (password/2FA required for mount)"
+        echo ""
+        echo "  ${_RT_YELLOW}Consider running:${_RT_NC} remote-setup-controlmaster $remote_name"
+        echo "  This will configure SSH ControlMaster for seamless mounting."
+        echo ""
     fi
     
     # Check 4: Remote path
@@ -643,15 +657,16 @@ opencode-sshfs - Remote Development Tools for OpenCode
 =======================================================
 
 COMMANDS:
-  list-remotes              List all configured remote systems
-  mount-remote <name>       Mount a remote filesystem via sshfs
-  umount-remote <name>      Unmount a remote filesystem
-  remote-status             Show mount status of all remotes
-  remote-ssh <name>         SSH into a configured remote
-  remote-health <name>      Test connectivity to a remote
-  remote-validate           Validate the configuration file
-  remote-version            Show version information
-  remote-help               Show this help message
+  list-remotes                 List all configured remote systems
+  mount-remote <name>          Mount a remote filesystem via sshfs
+  umount-remote <name>         Unmount a remote filesystem
+  remote-status                Show mount status of all remotes
+  remote-ssh <name>            SSH into a configured remote
+  remote-health <name>         Test connectivity to a remote
+  remote-validate              Validate the configuration file
+  remote-setup-controlmaster <name>  Setup SSH ControlMaster for 2FA/HPC systems
+  remote-version               Show version information
+  remote-help                  Show this help message
 
 OPTIONS:
   mount-remote:
@@ -689,6 +704,206 @@ EXAMPLES:
 For more documentation, see: docs/
 
 EOF
+}
+
+# Setup SSH ControlMaster for HPC/2FA systems
+remote-setup-controlmaster() {
+    local remote_name="$1"
+    
+    if [[ -z "$remote_name" ]]; then
+        _rt_error "Usage: remote-setup-controlmaster <remote-name>"
+        echo ""
+        echo "This command configures SSH ControlMaster for systems requiring password + 2FA."
+        echo ""
+        echo "Available remotes:"
+        list-remotes
+        return 1
+    fi
+    
+    # Get remote configuration
+    local entry
+    entry=$(_rt_get_remote "$remote_name") || {
+        _rt_error "Remote '$remote_name' not found in configuration."
+        return 1
+    }
+    
+    # Parse entry
+    IFS='|' read -r name user host remote_path local_mount <<< "$entry"
+    
+    echo ""
+    echo "${_RT_BOLD}Setting up ControlMaster for: $remote_name${_RT_NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # Step 1: Test if key-based auth works
+    _rt_step 1 4 "Testing key-based authentication..."
+    if ssh -o BatchMode=yes -o ConnectTimeout=10 "${user}@${host}" "echo 'SSH OK'" &>/dev/null; then
+        _rt_success "Key-based authentication already works!"
+        echo ""
+        echo "No ControlMaster setup needed. You can mount directly with:"
+        echo "  mount-remote $remote_name"
+        echo ""
+        return 0
+    else
+        _rt_warn "Key-based auth not available (this is normal for HPC/2FA systems)"
+    fi
+    
+    # Step 2: Check SSH config
+    _rt_step 2 4 "Checking SSH configuration..."
+    local ssh_config="${HOME}/.ssh/config"
+    local controlmaster_configured=false
+    local host_entry_exists=false
+    local identity_file=""
+    
+    if [[ -f "$ssh_config" ]]; then
+        # Check if Host entry exists
+        if grep -q "^Host $host" "$ssh_config" 2>/dev/null || \
+           grep -q "^Host .*$host" "$ssh_config" 2>/dev/null; then
+            host_entry_exists=true
+            _rt_debug "Found existing Host entry for $host"
+            
+            # Extract IdentityFile if present
+            identity_file=$(awk "/^Host.*$host/,/^Host /" "$ssh_config" 2>/dev/null | \
+                grep "IdentityFile" | head -1 | awk '{print $2}')
+            if [[ -n "$identity_file" ]]; then
+                _rt_debug "Found IdentityFile: $identity_file"
+            fi
+            
+            # Check if ControlMaster is already configured
+            if grep -A 10 "^Host.*$host" "$ssh_config" 2>/dev/null | \
+               grep -q "ControlMaster"; then
+                controlmaster_configured=true
+                _rt_success "ControlMaster already configured"
+            fi
+        fi
+    fi
+    
+    if [[ "$controlmaster_configured" == "true" ]]; then
+        echo ""
+        echo "${_RT_BOLD}ControlMaster is already configured!${_RT_NC}"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Run: ssh $host  (enter password + 2FA)"
+        echo "  2. Keep that terminal open"
+        echo "  3. Run: mount-remote $remote_name"
+        echo ""
+        return 0
+    fi
+    
+    # Step 3: Auto-configure SSH config
+    _rt_step 3 4 "Configuring SSH ControlMaster..."
+    
+    # Determine IdentityFile to use
+    if [[ -z "$identity_file" ]]; then
+        # Check for common key files
+        if [[ -f "${HOME}/.ssh/id_rsa" ]]; then
+            identity_file="~/.ssh/id_rsa"
+        elif [[ -f "${HOME}/.ssh/id_ed25519" ]]; then
+            identity_file="~/.ssh/id_ed25519"
+        elif [[ -f "${HOME}/.ssh/id_ecdsa" ]]; then
+            identity_file="~/.ssh/id_ecdsa"
+        fi
+    fi
+    
+    # Ensure .ssh directory exists
+    if [[ ! -d "${HOME}/.ssh" ]]; then
+        mkdir -p "${HOME}/.ssh"
+        chmod 700 "${HOME}/.ssh"
+    fi
+    
+    # Ensure sockets directory exists
+    if [[ ! -d "${HOME}/.ssh/sockets" ]]; then
+        mkdir -p "${HOME}/.ssh/sockets"
+        chmod 700 "${HOME}/.ssh/sockets"
+    fi
+    
+    # Backup existing config
+    if [[ -f "$ssh_config" ]]; then
+        cp "$ssh_config" "${ssh_config}.backup.$(date +%Y%m%d_%H%M%S)"
+        _rt_debug "Backed up existing SSH config"
+    fi
+    
+    # Add or update SSH config
+    if [[ "$host_entry_exists" == "true" ]]; then
+        # Update existing entry
+        _rt_debug "Updating existing Host entry"
+        
+        # Create temporary file with updated config
+        local temp_config="${ssh_config}.tmp"
+        
+        # Use sed to add ControlMaster settings after the Host line
+        awk -v host="$host" -v idfile="$identity_file" '
+            /^Host/ { in_host = 0 }
+            /^Host.*\yhost\y/ || /^Host host$/ { in_host = 1 }
+            in_host && /^Host/ {
+                print
+                if (idfile != "" && system("grep -q IdentityFile " host) != 0) {
+                    print "    IdentityFile " idfile
+                }
+                print "    ControlMaster auto"
+                print "    ControlPath ~/.ssh/sockets/%r@%h:%p"
+                print "    ControlPersist 8h"
+                next
+            }
+            { print }
+        ' "$ssh_config" > "$temp_config" 2>/dev/null || {
+            # Fallback: append new entry
+            _rt_warn "Could not update existing entry, will create new Host alias"
+        }
+        
+        if [[ -f "$temp_config" && -s "$temp_config" ]]; then
+            mv "$temp_config" "$ssh_config"
+        fi
+    else
+        # Create new Host entry
+        _rt_log "Creating new SSH config entry for $host"
+        
+        {
+            echo ""
+            echo "# Added by opencode-sshfs for $remote_name"
+            echo "Host $host"
+            echo "    HostName $host"
+            echo "    User $user"
+            if [[ -n "$identity_file" ]]; then
+                echo "    IdentityFile $identity_file"
+            fi
+            echo "    ControlMaster auto"
+            echo "    ControlPath ~/.ssh/sockets/%r@%h:%p"
+            echo "    ControlPersist 8h"
+        } >> "$ssh_config"
+    fi
+    
+    chmod 600 "$ssh_config"
+    _rt_success "SSH configuration updated"
+    
+    # Step 4: Guide user through setup
+    _rt_step 4 4 "Setup complete!"
+    echo ""
+    echo "${_RT_BOLD}Next steps:${_RT_NC}"
+    echo ""
+    echo "${_RT_YELLOW}IMPORTANT:${_RT_NC} You need to establish the master SSH connection."
+    echo ""
+    echo "  ${_RT_BOLD}Step 1:${_RT_NC} Open a new terminal and run:"
+    echo "    ssh $host"
+    echo ""
+    echo "  ${_RT_BOLD}Step 2:${_RT_NC} Enter your password + 2FA when prompted"
+    echo ""
+    echo "  ${_RT_BOLD}Step 3:${_RT_NC} ${_RT_GREEN}Keep that terminal open!${_RT_NC}"
+    echo ""
+    echo "  ${_RT_BOLD}Step 4:${_RT_NC} In this terminal, run:"
+    echo "    mount-remote $remote_name"
+    echo ""
+    echo "${_RT_BOLD}How it works:${_RT_NC}"
+    echo "  The first SSH connection (with password/2FA) creates a 'master' connection."
+    echo "  SSHFS will reuse this connection, so no more password prompts!"
+    echo ""
+    echo "${_RT_BOLD}Tips:${_RT_NC}"
+    echo "  - Keep the SSH terminal open while using the mount"
+    echo "  - The connection persists for 8 hours (ControlPersist setting)"
+    echo "  - You can use VS Code SSH to establish the connection too"
+    echo ""
+    
+    return 0
 }
 
 # ============================================================================

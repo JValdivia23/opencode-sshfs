@@ -110,6 +110,45 @@ source ~/.zshrc
    chmod 644 ~/.ssh/id_rsa.pub
    ```
 
+### "Permission denied (keyboard-interactive)" with HPC/2FA Systems
+
+**Cause:** HPC clusters (NCAR Derecho, university clusters, etc.) often require both password AND 2FA and don't support passwordless SSH keys.
+
+**Solution:** Use SSH ControlMaster with the auto-setup command:
+
+```bash
+# Automatically configure SSH ControlMaster
+remote-setup-controlmaster myremote
+
+# Follow the prompts to complete setup
+```
+
+**What it does:**
+1. Tests if key-based auth works
+2. Checks your SSH config for existing settings
+3. Adds ControlMaster configuration automatically
+4. Guides you through establishing the master connection
+
+**Manual setup (if auto-setup doesn't work):**
+
+1. Add to `~/.ssh/config`:
+   ```
+   Host myserver.hpc.edu
+     HostName myserver.hpc.edu
+     User myusername
+     IdentityFile ~/.ssh/id_rsa
+     ControlMaster auto
+     ControlPath ~/.ssh/sockets/%r@%h:%p
+     ControlPersist 8h
+   ```
+
+2. Establish master connection: `ssh myserver.hpc.edu` (enter password + 2FA)
+3. Keep terminal open, then mount: `mount-remote myremote`
+
+**Note:** For best results with VS Code:
+- Use VS Code's Remote SSH to connect to the server (this creates the master connection)
+- Then run `mount-remote` from your local terminal
+
 ### "Connection timed out" during mount
 
 **Causes:**

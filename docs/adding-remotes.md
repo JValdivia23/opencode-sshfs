@@ -118,6 +118,29 @@ Host casper
 derecho|jairovp|derecho.hpc.ucar.edu|/glade/derecho/scratch/jairovp|~/mounts/derecho
 ```
 
+**For HPC systems with 2FA, use auto-setup:**
+```bash
+remote-setup-controlmaster derecho
+```
+
+**Or manually configure `~/.ssh/config`:**
+```
+Host derecho.hpc.ucar.edu
+    HostName derecho.hpc.ucar.edu
+    User jairovp
+    IdentityFile ~/.ssh/id_rsa
+    ControlMaster auto
+    ControlPath ~/.ssh/sockets/%r@%h:%p
+    ControlPersist 8h
+```
+
+**Usage with ControlMaster:**
+1. Terminal 1: `ssh derecho.hpc.ucar.edu` (enter password + 2FA)
+2. Keep Terminal 1 open
+3. Terminal 2: `mount-remote derecho` (no password prompt!)
+
+**Tip:** You can also use VS Code SSH to establish the connection, then mount from your local terminal.
+
 ### University HPC (CU Boulder CURC)
 
 ```
@@ -206,6 +229,22 @@ casper|jdoe|casper|/glade/work/jdoe|~/mounts/casper
 
 Note: The HOST field matches the `Host` alias in SSH config.
 
+### Automatic SSH Config Setup
+
+Instead of manually editing `~/.ssh/config`, use the built-in setup command:
+
+```bash
+remote-setup-controlmaster myremote
+```
+
+This command will:
+- Check if key-based authentication works
+- Detect existing SSH config settings
+- Automatically add ControlMaster configuration
+- Guide you through the setup process
+
+**Perfect for:** HPC systems, university clusters, or any server requiring 2FA.
+
 ## Troubleshooting New Remotes
 
 ### "Permission denied" when mounting
@@ -237,7 +276,12 @@ Host myremote
 
 ### 2FA prompts every time
 
-Set up ControlMaster (see SSH Config Integration above), then:
+**Quick fix:** Run the auto-setup command:
+```bash
+remote-setup-controlmaster myremote
+```
+
+**Manual setup:** Add ControlMaster to your `~/.ssh/config` (see SSH Config Integration above), then:
 1. Open SSH connection in one terminal
 2. Mount in another terminal (no password prompt!)
 
