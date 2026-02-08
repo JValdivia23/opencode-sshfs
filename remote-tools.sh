@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================================================
 # remote-tools.sh - SSHFS mount utilities for remote development with OpenCode
-# Version: 0.1.1
+# Version: 1.0.0
 # https://github.com/JValdivia23/opencode-sshfs
 # ============================================================================
 
 # Configuration
-REMOTE_TOOLS_VERSION="0.1.1"
+REMOTE_TOOLS_VERSION="1.0.0"
 # Get the directory containing this script
 # Try BASH_SOURCE first, then fall back to $0 for zsh compatibility
 _rt_script_path="${BASH_SOURCE[0]:-$0}"
@@ -665,6 +665,7 @@ COMMANDS:
   remote-health <name>         Test connectivity to a remote
   remote-validate              Validate the configuration file
   remote-setup-controlmaster <name>  Setup SSH ControlMaster for 2FA/HPC systems
+  generate-instructions [name] Generate AGENTS.md/CLAUDE.md instructions for remote(s)
   remote-version               Show version information
   remote-help                  Show this help message
 
@@ -861,7 +862,11 @@ remote-setup-controlmaster() {
         {
             echo ""
             echo "# Added by opencode-sshfs for $remote_name"
-            echo "Host $host"
+            if [[ "$name" != "$host" ]]; then
+                echo "Host $name $host"
+            else
+                echo "Host $host"
+            fi
             echo "    HostName $host"
             echo "    User $user"
             if [[ -n "$identity_file" ]]; then
@@ -904,6 +909,188 @@ remote-setup-controlmaster() {
     echo ""
     
     return 0
+}
+
+# Generate AGENTS.md/CLAUDE.md instructions for remote development
+generate-instructions() {
+    local remote_name="$1"
+    local config_file
+    
+    config_file=$(_rt_find_config) || {
+        _rt_error "Configuration file not found."
+        return 1
+    }
+    
+    if [[ -n "$remote_name" ]]; then
+        # Generate for specific remote
+        local entry
+        entry=$(_rt_get_remote "$remote_name") || {
+            _rt_error "Remote '$remote_name' not found in configuration."
+            return 1
+        }
+        
+        _generate_instructions_for_remote "$entry"
+    else
+        # Generate for all remotes
+        echo "# Remote Development via SSHFS"
+        echo ""
+        echo "This project uses files mounted from remote servers via SSHFS."
+        echo "Files are edited locally but **commands execute on the remote server**."
+        echo ""
+        
+        local first=true
+        while IFS='|' read -r name user host remote_path local_mount; do
+            # Skip empty lines and comments
+            [[ -z "$name" || "$name" =~ ^# ]] && continue
+            
+            if [[ "$first" == "true" ]]; then
+                first=false
+            else
+                echo ""
+                echo "---"
+                echo ""
+            fi
+            
+            _generate_instructions_for_remote "$name|$user|$host|$remote_path|$local_mount"
+        done < "$config_file"
+    fi
+}
+
+# Internal helper to detect scheduler type on remote
+_rt_detect_scheduler() {
+    local name="$1"
+    local host="$2"
+    local scheduler="unknown"
+    
+    # Try to detect scheduler by checking which command exists
+    # Use a longer timeout and suppress errors
+    if ssh -o ConnectTimeout=10 -o BatchMode=yes "$name" "which qstat" &>/dev/null; then
+        scheduler="pbs"
+    elif ssh -o ConnectTimeout=10 -o BatchMode=yes "$name" "which squeue" &>/dev/null; then
+        scheduler="slurm"
+    else
+        # Fallback: infer from known HPC host patterns
+        # NCAR systems (derecho, casper) use PBS
+        if [[ "$host" == *".hpc.ucar.edu"* ]] || [[ "$host" == "derecho" ]] || [[ "$host" == "casper" ]]; then
+            scheduler="pbs"
+        fi
+    fi
+    
+    echo "$scheduler"
+}
+
+# Internal helper to generate instructions for a single remote
+_generate_instructions_for_remote() {
+    local entry="$1"
+    IFS='|' read -r name user host remote_path local_mount <<< "$entry"
+    
+    local expanded_mount="$(_rt_expand_path "$local_mount")"
+    local expanded_remote="$(_rt_expand_path "$remote_path")"
+    
+    # Detect scheduler
+    local scheduler=$(_rt_detect_scheduler "$name" "$host")
+    local scheduler_name=""
+    local job_submit_cmd=""
+    local job_queue_cmd=""
+    local job_cancel_cmd=""
+    local scheduler_note=""
+    
+    if [[ "$scheduler" == "pbs" ]]; then
+        scheduler_name="PBS Pro"
+        job_submit_cmd="qsub"
+        job_queue_cmd="qstat -u $user"
+        job_cancel_cmd="qdel"
+        scheduler_note="PBS Pro job scheduler detected"
+    elif [[ "$scheduler" == "slurm" ]]; then
+        scheduler_name="Slurm"
+        job_submit_cmd="sbatch"
+        job_queue_cmd="squeue -u $user"
+        job_cancel_cmd="scancel"
+        scheduler_note="Slurm job scheduler detected"
+    else
+        scheduler_name="Unknown"
+        job_submit_cmd="<scheduler-submit-command>"
+        job_queue_cmd="<scheduler-queue-command>"
+        job_cancel_cmd="<scheduler-cancel-command>"
+        scheduler_note="Could not detect job scheduler (SSH may require authentication)"
+    fi
+    
+    cat <<EOF
+## Important: Remote File System
+
+**Setup:** This project is mounted from \`$name\` ($user@$host) via SSHFS.
+
+**Your constraints:**
+- You have full read/write access to files (treat as local)
+- You CANNOT execute commands locally - they won't work or will use wrong environment
+- You MUST use SSH for: running scripts, submitting jobs, checking remote-only paths, loading modules
+
+**Quick check:** Before running any command, ask: "Does this need the remote environment?" If yes, use \`ssh $name "..."\`
+
+---
+
+## Remote: $name
+
+**Connection Details:**
+
+| Item | Value |
+|------|-------|
+| Remote Host | \`$host\` |
+| Remote User | \`$user\` |
+| Local Mount Point | \`$expanded_mount\` |
+| Actual Remote Path | \`$expanded_remote\` |
+| Job Scheduler | ${scheduler_name}${scheduler:+ ($scheduler_note)} |
+
+### How to Execute Remote Operations
+
+Since the local filesystem is just a mount, use SSH for any operations that depend on the remote environment:
+
+\`\`\`bash
+# List files on $name (including paths not mounted)
+ssh $name "ls -la /some/path"
+
+# Check if a file exists
+ssh $name "test -f /path/to/file && echo 'exists' || echo 'not found'"
+
+# Run a shell script
+ssh $name "bash $expanded_remote/scripts/process.sh"
+
+# Check job queue (HPC system)
+ssh $name "$job_queue_cmd"
+
+# Submit a job (HPC system)
+ssh $name "$job_submit_cmd $expanded_remote/jobs/myjob.slurm"
+
+# Cancel a job (HPC system)
+ssh $name "$job_cancel_cmd <job-id>"
+
+# Load modules and run command (HPC system)
+ssh $name "module load python && python $expanded_remote/script.py"
+\`\`\`
+
+### When to Use SSH vs Local
+
+| Use Local (direct access) | Use SSH (remote execution) |
+|---------------------------|----------------------------|
+| Reading/editing mounted files | Listing paths outside the mount |
+| Git operations | Checking if remote files exist |
+| Viewing file contents | Submitting Slurm jobs |
+| | Running scripts that need HPC modules/environment |
+| | Any command requiring the remote environment |
+
+### Path Translation
+
+When working with this remote:
+- **Local path (SSHFS):** \`$expanded_mount/subdir/file\`
+- **Remote path (SSH):** \`$expanded_remote/subdir/file\`
+
+### Important Notes
+
+- SSH to \`$name\` is **passwordless** (SSH keys + ControlMaster configured)
+- Always use the full remote path (e.g., \`$expanded_remote/...\`) in SSH commands
+- For HPC systems: Slurm commands, module loads, and other cluster-specific tools should be run via SSH
+- The local mount only provides file access; execution happens on the remote server
+EOF
 }
 
 # ============================================================================
