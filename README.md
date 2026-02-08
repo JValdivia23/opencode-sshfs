@@ -12,11 +12,12 @@ When you can't install OpenCode on a remote system (e.g., university supercomput
 
 ## Features
 
-- Simple configuration file for multiple remotes
-- SSH ControlMaster support for password+2FA authentication
-- Auto-create mount directories
-- Connection health checks
-- Works with any SSH-accessible server (HPC clusters, NAS, cloud VMs, lab servers)
+- **Context-Aware AI Instructions**: Automatically generates `AGENTS.md` so OpenCode knows to use SSH for execution
+- **Scheduler Auto-Detection**: Detects PBS Pro vs Slurm and uses correct job commands (`qsub` vs `sbatch`)
+- **Simple Configuration**: Pipe-delimited file for multiple remotes
+- **SSH ControlMaster Support**: Handles password+2FA authentication seamlessly
+- **Auto-Mount**: Creates directories and mounts automatically
+- **Health Checks**: Verifies connectivity before mounting
 
 ## Requirements
 
@@ -80,21 +81,35 @@ list-remotes
 # Mount a remote
 mount-remote casper
 
-# Navigate and start OpenCode
+# Navigate
 cd ~/mounts/casper
+```
+
+### 5. Initialize OpenCode with Context
+
+To help the AI agent understand it's working on a remote system, generate instructions:
+
+```bash
+# Generate context for OpenCode
+generate-instructions casper > AGENTS.md
+
+# Start OpenCode
 opencode .
 ```
 
-### 5. Use the remote normally (in another terminal)
+The `AGENTS.md` file tells the agent:
+- Files are mounted locally but **execute remotely**
+- Use `ssh casper "..."` for running scripts/jobs
+- Use the correct scheduler commands (PBS `qsub` vs Slurm `sbatch`)
 
-```bash
-# SSH to run code, submit jobs, etc.
-ssh casper
-python my_script.py
-sbatch my_job.slurm
-```
+### 6. Use the remote normally
 
-### 6. Unmount when done
+You can now ask the agent to run commands, and it will automatically use SSH:
+
+> "Check if my job is running" -> Agent runs `ssh casper "qstat -u user"`
+> "Run the analysis script" -> Agent runs `ssh casper "python script.py"`
+
+### 7. Unmount when done
 
 ```bash
 umount-remote casper
@@ -111,6 +126,7 @@ umount-remote casper
 | `remote-ssh <name>` | SSH into a configured remote |
 | `remote-health <name>` | Test connectivity to a remote |
 | `remote-validate` | Validate your configuration file |
+| `generate-instructions [name]` | Generate AGENTS.md context for AI agents |
 | `remote-help` | Show help and all commands |
 
 ## Configuration
