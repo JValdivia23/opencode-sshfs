@@ -16,6 +16,8 @@ When you can't install OpenCode on a remote system (e.g., university supercomput
 - **Scheduler Auto-Detection**: Detects PBS Pro vs Slurm and uses correct job commands (`qsub` vs `sbatch`)
 - **Simple Configuration**: Pipe-delimited file for multiple remotes
 - **SSH ControlMaster Support**: Handles password+2FA authentication seamlessly
+- **Connection Stability**: Automatically configures SSH Keep-Alive settings to prevent connection drops on HPC nodes
+- **Smart Auto-Recovery**: Detects and cleans up zombie sshfs processes and broken mounts automatically
 - **Auto-Mount**: Creates directories and mounts automatically
 - **Health Checks**: Verifies connectivity before mounting
 
@@ -151,6 +153,8 @@ Host casper
     ControlMaster auto
     ControlPath ~/.ssh/sockets/%r@%h:%p
     ControlPersist 8h
+    ServerAliveInterval 60
+    ServerAliveCountMax 10
 ```
 
 This allows you to authenticate once and reuse the connection for 8 hours.

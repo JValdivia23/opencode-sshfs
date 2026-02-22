@@ -149,6 +149,23 @@ remote-setup-controlmaster myremote
 - Use VS Code's Remote SSH to connect to the server (this creates the master connection)
 - Then run `mount-remote` from your local terminal
 
+### "Input/output error" or Stale Mounts
+
+**Cause:** The underlying SSH connection was dropped by the server (common on HPC nodes or stateful firewalls) because it was idle, leaving `sshfs` in a broken "zombie" state.
+
+**Solution:**
+The latest version of `mount-remote` will automatically detect and fix this. Simply run:
+```bash
+mount-remote myremote
+```
+It will detect the zombie background processes, kill them, clear the broken mount, and attempt a fresh mount.
+
+If you are setting up `~/.ssh/config` manually, ensure you add these keep-alive lines to prevent the connection from dropping in the first place:
+```
+  ServerAliveInterval 60
+  ServerAliveCountMax 10
+```
+
 ### "Connection timed out" during mount
 
 **Causes:**
