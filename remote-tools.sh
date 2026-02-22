@@ -249,16 +249,44 @@ mount-remote() {
     _rt_debug "Remote path: $expanded_remote"
     _rt_debug "Local mount: $expanded_mount"
     
-    # Check if already mounted
+    _rt_step 1 5 "Checking mount health..."
+    local is_mounted=false
     if _rt_is_mounted "$expanded_mount"; then
-        _rt_warn "'$remote_name' is already mounted at $expanded_mount"
-        echo ""
-        echo "To unmount first, run: umount-remote $remote_name"
-        return 1
+        is_mounted=true
+    fi
+    
+    local stale_pids
+    stale_pids=$(pgrep -f "sshfs.*${expanded_mount}" || true)
+    
+    if [[ "$is_mounted" == "true" ]]; then
+        if [[ -z "$stale_pids" ]]; then
+            _rt_warn "Detected broken mount (no running sshfs process). Auto-repairing..."
+            if [[ "$(uname)" == "Darwin" ]]; then
+                diskutil unmount force "$expanded_mount" 2>/dev/null || umount -f "$expanded_mount" 2>/dev/null || true
+            else
+                fusermount -uz "$expanded_mount" 2>/dev/null || umount -f "$expanded_mount" 2>/dev/null || true
+            fi
+            is_mounted=false
+            sleep 1
+        else
+            _rt_warn "'$remote_name' is already mounted at $expanded_mount"
+            echo ""
+            echo "To unmount first, run: umount-remote $remote_name"
+            echo "If the mount is frozen, run: umount-remote $remote_name --force"
+            return 1
+        fi
+    fi
+    
+    if [[ "$is_mounted" == "false" && -n "$stale_pids" ]]; then
+        _rt_warn "Found zombie sshfs processes. Cleaning up before mounting..."
+        for pid in $stale_pids; do
+            kill -9 "$pid" 2>/dev/null || true
+        done
+        sleep 1
     fi
     
     # Create mount point if it doesn't exist
-    _rt_step 1 4 "Checking mount point..."
+    _rt_step 2 5 "Checking mount point directory..."
     if [[ ! -d "$expanded_mount" ]]; then
         _rt_log "Creating mount point: $expanded_mount"
         mkdir -p "$expanded_mount" || {
@@ -269,7 +297,7 @@ mount-remote() {
     _rt_success "Mount point ready: $expanded_mount"
     
     # Check SSH sockets directory
-    _rt_step 2 4 "Checking SSH configuration..."
+    _rt_step 3 5 "Checking SSH configuration..."
     if [[ ! -d "${HOME}/.ssh/sockets" ]]; then
         _rt_log "Creating SSH sockets directory..."
         mkdir -p "${HOME}/.ssh/sockets"
@@ -278,7 +306,7 @@ mount-remote() {
     _rt_success "SSH configuration ready"
     
     # Mount using sshfs
-    _rt_step 3 4 "Connecting to ${user}@${host}..."
+    _rt_step 4 5 "Connecting to ${user}@${host}..."
     echo ""
     echo "  ${_RT_YELLOW}You may be prompted for password and/or 2FA.${_RT_NC}"
     echo ""
@@ -291,7 +319,7 @@ mount-remote() {
     
     if sshfs "${user}@${host}:${expanded_remote}" "$expanded_mount" -o "$sshfs_opts" $verbose_flag; then
         echo ""
-        _rt_step 4 4 "Verifying mount..."
+        _rt_step 5 5 "Verifying mount..."
         
         # Give the mount a moment to register, retry a few times
         local mount_verified=false
@@ -395,11 +423,20 @@ umount-remote() {
     _rt_log "Unmounting $remote_name from $expanded_mount..."
     
     if [[ "$force_flag" == "1" ]]; then
+        _rt_log "Force unmounting and cleaning up processes..."
+        local stale_pids
+        stale_pids=$(pgrep -f "sshfs.*${expanded_mount}" || true)
+        if [[ -n "$stale_pids" ]]; then
+            for pid in $stale_pids; do
+                kill -9 "$pid" 2>/dev/null || true
+            done
+        fi
+        
         # Force unmount
         if [[ "$(uname)" == "Darwin" ]]; then
-            diskutil unmount force "$expanded_mount" 2>/dev/null || umount -f "$expanded_mount"
+            diskutil unmount force "$expanded_mount" 2>/dev/null || umount -f "$expanded_mount" 2>/dev/null || true
         else
-            fusermount -uz "$expanded_mount" 2>/dev/null || umount -f "$expanded_mount"
+            fusermount -uz "$expanded_mount" 2>/dev/null || umount -f "$expanded_mount" 2>/dev/null || true
         fi
     else
         # Normal unmount
