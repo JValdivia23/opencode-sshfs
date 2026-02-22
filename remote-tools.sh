@@ -284,8 +284,10 @@ mount-remote() {
     echo ""
     
     # sshfs options for better performance and reliability
-    local sshfs_opts="reconnect,ServerAliveInterval=15,ServerAliveCountMax=3"
-    sshfs_opts+=",follow_symlinks,cache=yes,kernel_cache,defer_permissions"
+    local sshfs_opts="reconnect,ServerAliveInterval=60,ServerAliveCountMax=10,ConnectTimeout=30"
+    sshfs_opts+=",follow_symlinks"
+    sshfs_opts+=",auto_cache,cache_timeout=60,attr_timeout=60"
+    sshfs_opts+=",noappledouble,noapplexattr,defer_permissions"
     
     if sshfs "${user}@${host}:${expanded_remote}" "$expanded_mount" -o "$sshfs_opts" $verbose_flag; then
         echo ""
@@ -844,6 +846,8 @@ remote-setup-controlmaster() {
                 print "    ControlMaster auto"
                 print "    ControlPath ~/.ssh/sockets/%r@%h:%p"
                 print "    ControlPersist 8h"
+                print "    ServerAliveInterval 60"
+                print "    ServerAliveCountMax 10"
                 next
             }
             { print }
@@ -875,6 +879,8 @@ remote-setup-controlmaster() {
             echo "    ControlMaster auto"
             echo "    ControlPath ~/.ssh/sockets/%r@%h:%p"
             echo "    ControlPersist 8h"
+            echo "    ServerAliveInterval 60"
+            echo "    ServerAliveCountMax 10"
         } >> "$ssh_config"
     fi
     
